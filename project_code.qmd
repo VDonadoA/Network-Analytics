@@ -1,0 +1,370 @@
+### Group 2 MTP CODE 
+
+1. Consider the knowledge exchange network and compute network analysis indicators regarding density and bridging ties (which are a key features of small-world networks). 
+
+```{python}
+### import libraries
+### naming our variables
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import networkx as nx
+from collections import Counter
+import statsmodels.api as sm
+import seaborn as sns
+
+teams = pd.read_csv("team_employee_affiliations.csv")
+
+ke = pd.read_csv(
+	"knowledge_exchange_network.csv",
+	sep=",",
+	header=None,
+	names=["u", "v"]
+	)
+
+outcome = pd.read_csv("project_outcomes.csv")
+
+g = nx.from_pandas_edgelist(ke, source="u", target="v")
+
+```
+
+```{python}
+### calculating avg degree
+g_node_degree = nx.degree(g)
+print(g_node_degree)
+
+g_avg_degree = np.mean([d for n, d in g_node_degree])
+print(g_avg_degree)
+
+```
+
+```{python}
+### calculating degree distribution
+g_degree_dist = Counter([d for n, d in g_node_degree])
+
+### plotting degree distribution
+fig = plt.figure(figsize=(6, 4))
+ax1 = fig.add_subplot(122)
+props = [_/len(g.nodes()) for _ in g_degree_dist.values()]
+ax1.scatter(g_degree_dist.keys(), props, color='red')
+ax1.set_xlabel('Degree')
+ax1.set_title('Small World Network')
+ax1.set_xticks(np.arange(0, 14, 2))
+
+
+plt.show()
+
+```
+
+```{python}
+### Calculating connectedness at network level 
+nx.is_connected(g)
+# return the nodes by connected component
+for members in nx.connected_components(g):
+    print(members)
+# draw network
+nx.draw(g, with_labels=True, node_size=300, node_color='lime')
+
+
+### Calculating connectedness at node level
+connected_members = set()
+for members in nx.connected_components(g):
+    connected_members.update(members)
+
+data = []
+for node in g.nodes():
+    # 1 if the node is in the connected components, 0 otherwise
+    connect_status = 1 if node in connected_members else 0
+    data.append({"empl_id": node, "connect": connect_status})
+
+
+```
+
+```{python}
+### Calculating clustering at network level
+g_cluster1= nx.average_clustering(g)
+print(g_cluster1)
+
+### Calculating clustering at node level
+g_cluster= nx.clustering(g)
+print(g_cluster)
+
+### Visualising
+fig = plt.figure(figsize=(6, 4))
+ax = fig.add_subplot(111)
+g_cluster2 = Counter(g_cluster.values())
+ax.bar(
+    g_cluster2.keys(),
+    g_cluster2.values(),
+    color="magenta",
+    label="Clustering Node Level",
+    width=0.5
+)
+print(g_cluster2)
+```
+
+```{python}
+### Calculating betweenness centrality
+g_centrality = nx.betweenness_centrality(g)
+print(g_centrality)
+
+
+### Calculating burts constraint index
+g_constraint = nx.constraint(g)
+print(g_constraint)
+
+```
+
+```{python}
+### Creating data frame for teams and sorting my team number
+
+df_teams = pd.read_csv("team_employee_affiliations.csv")
+df_teams.sort_values(by=["team_id"], inplace=True)
+
+print(df_teams)
+```
+
+
+2. Arrange these metrics in a Pandas `DataFrame`
+```{python}
+### Creating data frames for comprehension
+
+df_degree = pd.DataFrame(list(g_node_degree),columns = ["empl_id","avg degree"])
+print(df_degree)
+
+df_cluster = pd.DataFrame(list(g_cluster.items()),columns = ["empl_id","cluster coef"])
+print(df_cluster)
+
+df_centrality = pd.DataFrame(list(g_centrality.items()),columns = ["empl_id","betweeness"])
+print(df_centrality)
+
+df_connect = pd.DataFrame(data)
+print(df_connect)
+
+df_constraint = pd.DataFrame(list(g_constraint.items()),columns = ["empl_id","constraint"])
+print(df_constraint)
+
+### Creating data frame that counts number of members per team
+df_members = df_teams.groupby("team_id")
+df_member= df_members.count()
+df_member = df_member.rename(columns={
+    'empl_id':'Amount of Employees',
+})
+print(df_member)
+
+```
+
+
+3. Merge this Pandas `DataFrame` with the file `teams`
+
+```{python}
+### Merging all Data Frames
+df_1 = pd.merge(df_teams,df_degree,on="empl_id", how="outer")
+df_2= pd.merge(df_1,df_cluster,on="empl_id", how="outer")
+df_3 = pd.merge(df_2,df_centrality,on="empl_id", how="outer")
+df_4 = pd.merge(df_3,df_connect, on="empl_id", how="outer")
+df_5= pd.merge(df_4, df_constraint, on="empl_id", how="outer")
+
+### Sorting new data frame by team number
+
+df_5.sort_values(by=["team_id"], inplace=True)
+print(df_5)
+```
+
+4. Summarise the data at the team-level. To do so, you can group the data using Pandas function `groupby` along with the `aggregate` option
+
+```{python}
+### Summarise the data at the team-level
+#---avg node degree per team, considering its members
+groups = df_5.groupby("team_id")
+print(groups)
+
+group_deg= groups["avg degree"].aggregate([np.mean])
+group_betw= groups["betweeness"].aggregate([np.mean])
+group_cluster = groups["cluster coef"].aggregate([np.mean])
+group_connect = groups ["connect"].aggregate([np.mean])
+group_const = groups ["constraint"].aggregate([np.mean])
+
+df_group = pd.merge(group_deg, group_betw, on="team_id", how="outer",suffixes=('_avg_degree', '_betweeness'))
+df_group1 = pd.merge(df_group, group_cluster, on="team_id", how="outer")
+df_group2 = pd.merge(df_group1, group_connect, on="team_id", how="outer",suffixes=('_cluster', '_connect'))
+df_group3 = pd.merge(df_group2,group_const, on="team_id", how="outer")
+
+df_group3 = df_group3.rename(columns={
+    'mean':'mean_constraint',
+})
+
+df_group4 = pd.concat([df_group3, df_member], axis=1)
+print(df_group4)
+
+```
+
+ 
+5. Merge the aggregate data with `outcome` 
+
+```{python}
+data_silicon = pd.merge(outcome,df_group4, on="team_id", how= "outer")
+print(data_silicon)
+
+```
+
+```{python}
+print(data_silicon.head())
+```
+
+
+6. Run some statistical analyses highlighting the relationship between the average value of a network analysis indicator at the team level and the results achieved by the team 
+
+```{python}
+### Use statmodels to run multiple linear regression #1 explaining project success
+
+### Define predictors
+x = data_silicon[['mean_avg_degree','mean_betweeness','mean_cluster','mean_connect','mean_constraint','Amount of Employees']] 
+y = data_silicon['project_tech_success']
+
+x['const'] = 1
+
+### Run regression model
+model = sm.OLS(y, x).fit()
+
+print(model.summary())
+
+```
+
+```{python}
+### Look for collinearity in regressors
+correlation_matrix = x.corr()
+
+print(correlation_matrix)
+
+```
+
+
+```{python}
+### Rerun regression without multicollinearity and standardizing variables
+x = data_silicon[['mean_avg_degree','mean_betweeness','Amount of Employees']] 
+y = data_silicon['project_tech_success']
+
+x_standardized = (x - x.mean()) / x.std()
+
+x_standardized['const'] = 1
+
+model = sm.OLS(y, x_standardized).fit()
+
+print(model.summary())
+
+plt.figure(figsize=(12, 6))
+
+# Plot 'mean_betweeness' vs 'project_tech_success'
+plt.subplot(1, 2, 1)
+sns.boxplot(x=y, y=x_standardized['mean_betweeness'], palette={'salmon','limegreen'})
+plt.xlabel('Project Tech Success')
+plt.ylabel('Mean Betweenness')
+
+plt.tight_layout()
+plt.show()
+
+#look for collinearity in regressors
+correlation_matrix = x.corr()
+
+print(correlation_matrix)
+
+```
+
+
+
+
+```{python}
+### Use statmodels to run multiple linear regression #2 explaining duration
+
+### Define predictors
+A = data_silicon[['mean_avg_degree','mean_betweeness','mean_cluster','mean_connect','mean_constraint','Amount of Employees']] 
+B = data_silicon['project_duration']
+
+A['const'] = 1
+
+### Run regression model 2
+model_2 = sm.OLS(B, A).fit()
+
+print(model_2.summary())
+
+```
+
+```{python}
+### Look for collinearity in regressors
+correlation_matrix = A.corr()
+
+print(correlation_matrix)
+```
+
+
+```{python}
+### Rerun regression without multicollinearity and standardized variables
+
+A = data_silicon[['mean_avg_degree','mean_betweeness','Amount of Employees']] 
+B = data_silicon['project_duration']
+
+A_standardized = (A - A.mean()) / A.std()
+
+A_standardized['const'] = 1
+
+model_2 = sm.OLS(B, A_standardized).fit()
+
+print(model_2.summary())
+
+# Plot mean_avg_degree vs. project_duration
+plt.figure(figsize=(6, 5))
+
+data_silicon_1 = data_silicon.rename(columns={'Amount of Employees': 'Amount_of_Employees'})
+
+from statsmodels.graphics.regressionplots import plot_partregress
+
+#--- Create the partial regression plot
+fig, ax = plt.subplots(figsize=(6, 5))
+plot_partregress(endog='project_duration', exog_i='mean_avg_degree', 
+                 exog_others=['mean_betweeness', 'Amount_of_Employees'], 
+                 data=data_silicon_1, ax=ax)
+
+#--- Remove text labels on the plot
+for txt in ax.texts:
+    txt.set_visible(False)
+
+ax.set_xlabel('Mean Average Degree (controlling for other variables)')
+ax.set_ylabel('Project Duration')
+plt.show()
+
+# Plot mean_betweeness vs. project_duration
+plt.subplot(1, 2, 2)
+sns.regplot(x=A_standardized['mean_betweeness'], y=B)
+plt.xlabel('Mean Betweeness')
+plt.ylabel('Project Duration')
+
+plt.tight_layout()
+plt.show()
+
+#look for collinearity in regressors
+correlation_matrix = A.corr()
+
+print(correlation_matrix)
+
+```
+
+
+```{python}
+### Use statmodels to run multiple linear regression #3 explaining success 
+
+### Define predictors
+A = data_silicon[['project_novelty','project_duration']] 
+B = data_silicon['project_tech_success']
+
+A = sm.add_constant(A)
+
+### Run regression model 3
+model_3 = sm.OLS(B, A).fit()
+
+print(model_3.summary())
+
+```
+
+### see visualisations for model 3 in R separate file file
